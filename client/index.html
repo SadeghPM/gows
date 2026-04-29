@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}"> <!-- Provided by Laravel Blade -->
+    <title>GoWS Client Demo</title>
+</head>
+<body>
+    <h1>GoWS Client Dashboard</h1>
+    <div id="status" style="padding: 10px; background-color: #eee; border-radius: 4px;">Status: Initializing...</div>
+
+    <h2>Incoming Events:</h2>
+    <ul id="events"></ul>
+
+    <!-- Import our library -->
+    <script src="gows.js"></script>
+    <script>
+        const statusEl = document.getElementById('status');
+        const eventsEl = document.getElementById('events');
+        
+        // This simulates initializing GoWS in your Laravel Blade template.
+        // We read the CSRF token from the meta tag above
+        const csrfTokenMeta = document.querySelector('meta[name="csrf-token"]');
+        const csrf = csrfTokenMeta ? csrfTokenMeta.getAttribute('content') : '';
+
+        const ws = new GoWS({
+            // Pointing to a 'web' route so session cookies are used!
+            // Normally this is a relative string e.g. "/ws/generate-ticket" instead of a full host url
+            ticketUrl: "/ws/generate-ticket", 
+            
+            // Pass the CSRF token required by Laravel's web middleware
+            csrfToken: csrf,
+            
+            // This ensures cookies are sent with the fetch request
+            withCredentials: true,
+            
+            autoReconnect: true,
+        });
+
+        // 1. Listen for connection lifecycle events
+        ws.on('connect', () => {
+            statusEl.innerText = "Status: Connected to Go WS Server \u2705";
+            statusEl.style.backgroundColor = '#d4edda';
+        });
+
+        ws.on('disconnect', () => {
+            statusEl.innerText = "Status: Disconnected. Reconnecting... \u274c";
+            statusEl.style.backgroundColor = '#f8d7da';
+        });
+
+        // Tell the Go WebSocket server we want to receive messages sent to 'global-news'
+        ws.subscribe('global-news');
+
+        // 2. Listen for custom events matching the "event" string broadcasted from Laravel
+        ws.on('ArticlePublished', (payload) => {
+            console.log("ArticlePublished event received:", payload);
+            
+            const li = document.createElement('li');
+            li.innerHTML = `<strong>global-news (ArticlePublished)</strong>: ${payload.title}`;
+            eventsEl.prepend(li);
+        });
+
+        ws.on('ChatMessage', (payload) => {
+            console.log("Chat received:", payload);
+            
+            const li = document.createElement('li');
+            li.innerHTML = `<strong>ChatMessage</strong>: [User ${payload.sender_id}] ${payload.text}`;
+            eventsEl.prepend(li);
+        });
+
+        // You can also capture ALL incoming events
+        ws.on('*', (data) => {
+            console.log("Wildcard Capture:", data);
+        });
+
+        // Start connection
+        ws.connect();
+    </script>
+</body>
+</html>

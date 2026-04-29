@@ -1,0 +1,16 @@
+# Go Server
+go-server/gows
+go-server/gows-linux-amd64
+go-server/.env
+
+# Laravel
+laravel-app/.env
+laravel-app/vendor/
+laravel-app/storage/
+
+# Node
+node_modules/
+
+# OS Files
+.DS_Store
+*.log

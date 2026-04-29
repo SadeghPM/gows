@@ -1,0 +1,27 @@
+[Unit]
+Description=Go WebSocket Server (GoWS)
+After=network.target
+
+[Service]
+Type=simple
+# Ensure you create this user or change to an existing user (e.g., root or www-data)
+User=root
+Group=root
+
+# Load environment variables (LARAVEL_TICKET_URL, INTERNAL_SECRET)
+EnvironmentFile=-/etc/gows/.env
+
+# Path to the executable
+ExecStart=/usr/local/bin/gows
+
+# Restart policy
+Restart=always
+RestartSec=5
+
+# Logging
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=gows
+
+[Install]
+WantedBy=multi-user.target
