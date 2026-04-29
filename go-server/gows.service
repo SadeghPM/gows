@@ -8,8 +8,8 @@ Type=simple
 User=root
 Group=root
 
-# Load environment variables (LARAVEL_TICKET_URL, INTERNAL_SECRET)
-EnvironmentFile=-/etc/gows/.env
+# Set working directory to load config.yaml properly
+WorkingDirectory=/etc/gows
 
 # Path to the executable
 ExecStart=/usr/local/bin/gows

@@ -21,19 +21,22 @@ echo "Moving binary to /usr/local/bin/gows..."
 mv gows /usr/local/bin/gows
 chmod +x /usr/local/bin/gows
 
-# 3. Setup configuration directory and default .env
+# 3. Setup configuration directory and default config.yaml
 echo "Setting up configuration in /etc/gows..."
 mkdir -p /etc/gows
 
-# Create default .env file if it doesn't exist
-if [ ! -f /etc/gows/.env ]; then
-cat <<EOF > /etc/gows/.env
-# Go WebSocket Server Environment Variables
-LARAVEL_TICKET_URL="http://localhost:8000/api/internal/ws/validate-ticket"
-INTERNAL_SECRET="super-secret-internal-key"
-PORT=8080
+# Create default config file if it doesn't exist
+if [ ! -f /etc/gows/config.yaml ]; then
+cat <<EOF > /etc/gows/config.yaml
+server:
+  port: "8080"
+
+apps:
+  - id: "default"
+    ticket_url: "http://localhost:8000/api/internal/ws/validate-ticket"
+    secret: "super-secret-internal-key"
 EOF
-echo "Created default config at /etc/gows/.env. Please configure this file manually."
+echo "Created default config at /etc/gows/config.yaml. Please configure this file manually."
 fi
 
 # 4. Install systemd service
@@ -58,6 +61,6 @@ echo "  sudo systemctl status gows"
 echo "View logs:"
 echo "  sudo journalctl -u gows -f"
 echo "Edit configuration (restart required):"
-echo "  sudo nano /etc/gows/.env"
+echo "  sudo nano /etc/gows/config.yaml"
 echo "  sudo systemctl restart gows"
 echo "========================================="

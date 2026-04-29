@@ -30,9 +30,13 @@ class WebSocketTicketController extends Controller
         // Key is ticket, Value is User ID.
         Cache::put('ws_ticket_' . $ticket, $userId, 30);
 
+        // Include app_id in the connection URL string so GoWS knows which tenant is connecting
+        $appId = env('WS_APP_ID', 'default');
+        $wsUrl = env('WS_SERVER_URL', 'ws://localhost:8080/ws') . '?app_id=' . $appId;
+
         return response()->json([
             'ticket' => $ticket,
-            'ws_url' => env('WS_SERVER_URL', 'ws://localhost:8080/ws')
+            'ws_url' => $wsUrl
         ]);
     }
 

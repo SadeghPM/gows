@@ -1,122 +1,183 @@
-# Go & Laravel Simple WebSocket Integration
+# GoWS: Laravel & Go WebSocket Integration
 
-🚀 **Want to get up and running fast? See the [Quick Start Guide](QUICKSTART.md).**
+**GoWS** is a high-performance, ultra-lightweight WebSocket integration for Laravel applications, powered by a Go server. It completely replaces the need for complex solutions like Pusher, Laravel Echo, or Reverb, while delivering raw speed and minimal overhead.
 
-This workspace contains all the necessary components for an ultra-lightweight WebSocket integration completely avoiding complex libraries like Pusher, Laravel Echo, or Reverb.
+---
 
-## Architecture Highlights
-- **Go Server (`go-server/`)**: Extremely low overhead. Acts as the `Hub`. Clients connect here using a ticket and wait for payloads.
-- **Laravel Backend (`laravel-app/`)**: Generates authorization tickets internally via caching. Broadcasts real-time events to the Go Hub over a secure HTTP request.
-- **Security Check:** All server-to-server communication (Laravel -> Go Broadcast, Go -> Laravel Ticket Validation) is authenticated purely via an `Authorization: Bearer <Secret Key>` header. There are no IP or internal network restrictions built-in. Therefore, deploying the Go server on a standalone public domain (e.g. `gows.maindom.com`) works seamlessly as long as both servers share the same secret key.
-- **JS Client (`client/gows.js`)**: A tiny (100 LOC) vanilla Javascript utility that manages fetching the ticket, connecting to the Go server, handling reconnects, and firing typed JavaScript events.
+## Introduction
 
-## How to test the proof-of-concept
+At its core, **GoWS** consists of three key components working in harmony:
 
-### 1. Start the Go Server
+1. **The Go Hub (`go-server`)**: A blazing fast WebSocket server written in Go. Clients connect to it using an authorized ticket, and wait in "Channels" or "User Rooms" for payloads.
+2. **The Laravel Backend (`laravel-app`)**: Handles your application logic. It generates secure authorization tickets, validates connections, and pushes real-time events to the Go Hub via a secure, internal HTTP webhook.
+3. **The JS Client (`gows.js`)**: A tiny (100 LOC) vanilla JavaScript utility that manages ticket fetching, socket connection, automatic reconnects, and event listeners.
 
-You can configure the Go server using environment variables.
-**Note on Security:** Even if the Go Server is hosted on a public domain (like `gows.maindom.com`), all server-to-server communication is protected by the `INTERNAL_SECRET`. There are no IP or network restrictions by default; as long as Laravel and Go share the exact same secret key, they will trust each other!
+> **Note:** For a rapid 3-step setup, see the **[Quick Start Guide](QUICKSTART.md)**.
 
-```bash
-# The absolute URL where Go will ask Laravel if a ticket is valid
-export LARAVEL_TICKET_URL="http://localhost:8000/api/internal/ws/validate-ticket"
-# The shared secret key protecting server-to-server communication
-export INTERNAL_SECRET="super-secret-internal-key"
-export PORT="8080"
+---
+
+## Installation & Setup
+
+### 1. Server Configuration (Go Hub)
+
+The Go Server acts as your central WebSocket router. It operates completely standalone and can run on any domain or subdomain. It uses a `config.yaml` file to determine where to validate its connections.
+
+Create a `config.yaml` file in the `go-server/` directory:
+
+```yaml
+server:
+  port: "8080"
+
+apps:
+  - id: "default"
+    ticket_url: "http://localhost:8000/api/internal/ws/validate-ticket"
+    secret: "super-secret-internal-key"
 ```
 
-You can also create a `.env` file right inside the `go-server/` directory, which the binary will automatically load on boot!
-
-#### Run manually via Makefile:
+**Starting the server:**
 ```bash
 cd go-server
+make deps
 make run
 ```
 
-#### Run as a Background Service (Ubuntu / systemd):
-An installer script and `gows.service` file are included. Run the setup once to turn it into a system daemon!
-```bash
-cd go-server
-make install-ubuntu
+> **Deployment Note:** If deploying to a production Linux server, run `make build-linux` to generate a compiled binary, or use `make install-ubuntu` to automatically install it as a systemd background service.
 
-# Useful systemd commands afterwards:
-sudo systemctl status gows
-sudo nano /etc/gows/.env    # Edit ENV vars here and restart
-sudo systemctl restart gows
-sudo journalctl -u gows -f  # Tail logs
-```
+### 2. Laravel Integration
 
-### 2. Implement the Laravel code
-Copy the files in `laravel-app` to your real Laravel backend. 
+Integrating GoWS into your Laravel application only requires copying a few classes and updating your environment.
 
-Key environment variables to add to your `.env` (adjust these for production domain names):
+1. **Copy the necessary files** into your Laravel application structure:
+    * `app/Services/GoWebSocketService.php`
+    * `app/Http/Controllers/WebSocketTicketController.php`
+    * `app/Providers/GoWebSocketServiceProvider.php`
+2. **Register the Service Provider** in your Laravel bootstrap file to automatically bind the ticket endpoints (`bootstrap/providers.php` or `config/app.php`).
+3. **Configure your `.env` variables**:
+
 ```env
-# What the JS client uses to connect (give the public domain to the client)
-WS_SERVER_URL=wss://gows.maindom.com/ws
+# The App ID matching your GoWS config.yaml
+WS_APP_ID=default
 
-# What Laravel uses to push events (internal HTTP call)
-WS_BROADCAST_URL=https://gows.maindom.com/api/internal/broadcast
+# Client-facing URL where browsers will connect
+WS_SERVER_URL=wss://gows.mydomain.com/ws
 
-# The shared secret key protecting the internal communication
+# Internal Server-to-Server URL where Laravel broadcasts events to Go
+WS_BROADCAST_URL=https://gows.mydomain.com/api/internal/broadcast
+
+# The shared secret key protecting the Go server
 WS_INTERNAL_SECRET=super-secret-internal-key
 ```
 
-### 3. Usage inside Laravel application 
+---
 
-**Terminology Clarification:**
-- **User Targeting (`user_id`)**: A securely routed message sent directly to an authenticated user. **No channel subscription is needed** on the client side. The Go Server automatically links the active connection to the `user_id` when the ticket is validated.
-- **Channel / Room (`channel`)**: A grouping or logical room (e.g., `global-news`, `room-123`). Clients must explicitly `subscribe('channel-name')` to receive messages sent to a channel.
-- **Event (`event`)**: The specific action or message type being matched on the client-side (e.g., `ArticlePublished`, `OrderPlaced`). Clients must listen for this specific string using `ws.on('EventName', ...)`.
+## Broadcasting Server Events
 
-Anywhere in your Laravel code, to securely push an event to a specific user ONLY:
+GoWS uses a strictly typed architecture that separates **User Targeted** messages from **Public Channel** messages.
+
+#### Core Terminology
+* **User Targeting (`user_id`)**: Securely routes a message *directly* to an authenticated user's socket. Because Laravel validates the user during the initial connection handshake, **no channel subscription is needed** on the client side.
+* **Channels (`channel`)**: Public or logical group rooms (e.g., `global-news`). Clients must utilize `ws.subscribe('channel-name')` to opt-in to these messages.
+* **Events (`event`)**: The exact string matching the action you want your JavaScript frontend to listen for (e.g., `OrderPlaced`).
+
+### Broadcasting to a Specific User
+
+Anywhere in your backend, trigger a push event straight to a specific user ID:
+
 ```php
-\App\Services\GoWebSocketService::broadcastToUser(
-    userId: 9, 
+use App\Services\GoWebSocketService;
+
+GoWebSocketService::broadcastToUser(
+    userId: auth()->id(), 
     event: 'OrderPlaced', 
     payload: ['order_id' => 99, 'amount' => '$59.00']
 );
 ```
 
-Or to push an event to an entire channel simultaneously:
+### Broadcasting to a Channel
+
+To send an event to thousands of users simultaneously subscribed to a specific group:
+
 ```php
-\App\Services\GoWebSocketService::broadcastToChannel(
+use App\Services\GoWebSocketService;
+
+GoWebSocketService::broadcastToChannel(
     channel: 'global-news', 
     event: 'ArticlePublished', 
     payload: ['title' => 'Breaking News!']
 );
 ```
 
-### 4. Client Side Implementation
-In your frontend, import the JS library and subscribe to the events targeted at your user logic.
+---
+
+## Client Side Usage
+
+Drop the `gows.js` script into your frontend layout. The client library handles the heavy lifting, session cookie transmission, and JSON parsing.
+
+### Initialization
+> Ensure your layout contains the standard Laravel CSRF token: `<meta name="csrf-token" content="{{ csrf_token() }}">`
+
+```html
+<script src="/js/gows.js"></script>
+<script>
+    const ws = new GoWS({
+        ticketUrl: "/ws/generate-ticket", // Path registered by the Service Provider
+        csrfToken: document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
+        withCredentials: true // Strongly encourages sending session cookies to Laravel
+    });
+    
+    // Connect to the Hub
+    ws.connect();
+</script>
+```
+
+### Listening for Events 
+
+#### User Events
+Since your connection is automatically bound to your secure Laravel Session, you instantly receive private user events without needing to join custom rooms:
+
 ```javascript
-// Make sure you have <meta name="csrf-token" content="{{ csrf_token() }}"> in your <head>
-const ws = new GoWS({
-    ticketUrl: "/ws/generate-ticket", // Path to the ticket generation web route
-    csrfToken: document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
-    withCredentials: true // send session cookies to laravel
-});
-
-// PRIVATE USER MESSAGES: Start listening for standard user-targeted events securely
-// Because your ticket verifies your Laravel Session, your connection is ALREADY bound to your user ID.
-// You DO NOT need to subscribe to 'user.1'. Just listen for the event!
 ws.on('OrderPlaced', (payload) => {
-    console.log("New private order for me!", payload);
+    console.log("Your order was confirmed:", payload);
 });
+```
 
-// PUBLIC/GROUP CHANNELS:
-// IMPORTANT: Tell the Go WebSocket server we want to receive messages sent to specific channels.
-// You can subscribe to as many channels as you need!
+#### Channel Events
+If you wish to receive events sent to a `channel`, explicitly subscribe to it, then attach your event listener. You can subscribe to as many channels as you require!
+
+```javascript
 ws.subscribe('global-news');
 ws.subscribe('sports-updates');
 
-// Listen for the specific "event" string broadcasted from Laravel
 ws.on('ArticlePublished', (payload) => {
-    console.log("News arrived", payload.title);
+    alert("New Article: " + payload.title);
 });
-
-ws.on('MatchScoreUpdate', (payload) => {
-    console.log("Score update:", payload.score);
-});
-
-ws.connect();
 ```
+
+---
+
+## Multi-Tenancy
+
+GoWS supports out-of-the-box absolute multi-tenancy. You can serve 1, 10, or 100 completely distinct Laravel applications from a *single* running GoWS binary process without overlapping memory or connections.
+
+Add additional applications to your server's `config.yaml`:
+
+```yaml
+server:
+  port: "8080"
+
+apps:
+  - id: "laravel-app-1"
+    ticket_url: "https://api.app1.com/api/internal/ws/validate-ticket"
+    secret: "super-secret-key-1"
+
+  - id: "laravel-app-2"
+    ticket_url: "https://api.app2.com/api/internal/ws/validate-ticket"
+    secret: "super-secret-key-2"
+```
+
+In Laravel App 2's `.env`, update the Application identifier:
+```env
+WS_APP_ID=laravel-app-2
+```
+
+GoWS natively maps the HTTP webhook authentication via Bearer Token directly to the `AppID`, ensuring bulletproof isolation across your Laravel ecosystem.

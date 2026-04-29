@@ -3,16 +3,15 @@ Get your high-performance, real-time WebSocket integration running in 3 simple s
 
 ## Step 1: Run the Go WebSocket Server
 
-First, configure the Go server by creating a `.env` file inside the `go-server/` directory:
-```env
-# URL where Go asks Laravel to validate tickets
-LARAVEL_TICKET_URL=http://localhost:8000/api/internal/ws/validate-ticket
+First, configure the Go server by creating a `config.yaml` file inside the `go-server/` directory:
+```yaml
+server:
+  port: "8080"
 
-# Shared secret key protecting server-to-server communication
-INTERNAL_SECRET=super-secret-internal-key
-
-# Port for the Go WebSocket server
-PORT=8080
+apps:
+  - id: "default"
+    ticket_url: "http://localhost:8000/api/internal/ws/validate-ticket"
+    secret: "super-secret-internal-key"
 ```
 
 You can run the server locally on your machine or deploy it to a Linux server using the compiled binary.
@@ -44,6 +43,7 @@ Drop the provided code into your Laravel application and connect the two servers
 
 1. **Environment Variables**: Add these to your Laravel `.env` (update domains if in production):
     ```env
+    WS_APP_ID=default
     WS_SERVER_URL=ws://localhost:8080/ws
     WS_BROADCAST_URL=http://localhost:8080/api/internal/broadcast
     WS_INTERNAL_SECRET=super-secret-internal-key

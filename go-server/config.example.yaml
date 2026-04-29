@@ -1,0 +1,11 @@
+server:
+  port: "8080"
+
+apps:
+  - id: "default"
+    ticket_url: "http://localhost:8000/api/internal/ws/validate-ticket"
+    secret: "super-secret-internal-key"
+
+  - id: "laravel-app-2"
+    ticket_url: "https://api.app2.com/api/internal/ws/validate-ticket"
+    secret: "super-secret-key-2"

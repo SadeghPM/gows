@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/gorilla/websocket"
 	"github.com/joho/godotenv"
@@ -19,29 +20,61 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-var hub *Hub
-var laravelTicketURL = "http://localhost:8000/api/internal/ws/validate-ticket"
-var internalSecret = "super-secret-internal-key"
+type AppConfig struct {
+	AppID     string `json:"app_id"`
+	TicketURL string `json:"ticket_url"`
+	Secret    string `json:"secret"`
+}
+
+var apps = make(map[string]*AppConfig)
+var hubs = make(map[string]*Hub)
 var serverPort = "8080"
 
 func initConfig() {
-	// Attempt to load .env file if it exists, otherwise ignore error (e.g. systemd passes env directly)
 	_ = godotenv.Load()
-
-	if url := os.Getenv("LARAVEL_TICKET_URL"); url != "" {
-		laravelTicketURL = url
-	}
-	if secret := os.Getenv("INTERNAL_SECRET"); secret != "" {
-		internalSecret = secret
-	}
 	if port := os.Getenv("PORT"); port != "" {
 		serverPort = port
 	}
+
+	// Try reading apps.json for multi-tenant setup
+	file, err := os.ReadFile("apps.json")
+	if err == nil {
+		var configApps []AppConfig
+		if err := json.Unmarshal(file, &configApps); err == nil {
+			for _, app := range configApps {
+				a := app // copy
+				apps[a.AppID] = &a
+				hubs[a.AppID] = NewHub()
+			}
+			log.Printf("Loaded %d apps from apps.json", len(apps))
+			return
+		} else {
+			log.Printf("Failed to parse apps.json: %v. Falling back to env defaults.", err)
+		}
+	}
+
+	// Fallback to single-tenant Env vars
+	app := &AppConfig{
+		AppID:     os.Getenv("APP_ID"),
+		TicketURL: os.Getenv("LARAVEL_TICKET_URL"),
+		Secret:    os.Getenv("INTERNAL_SECRET"),
+	}
+	if app.AppID == "" {
+		app.AppID = "default"
+	}
+	if app.TicketURL == "" {
+		app.TicketURL = "http://localhost:8000/api/internal/ws/validate-ticket"
+	}
+	if app.Secret == "" {
+		app.Secret = "super-secret-internal-key"
+	}
+	apps[app.AppID] = app
+	hubs[app.AppID] = NewHub()
+	log.Printf("Loaded single-tenant fallback (AppID: %s)", app.AppID)
 }
 
 func main() {
 	initConfig()
-	hub = NewHub()
 
 	http.HandleFunc("/ws", wsHandler)
 	http.HandleFunc("/api/internal/broadcast", broadcastHandler)
@@ -57,13 +90,25 @@ type ClientMessage struct {
 }
 
 func wsHandler(w http.ResponseWriter, r *http.Request) {
+	appID := r.URL.Query().Get("app_id")
+	if appID == "" {
+		appID = "default"
+	}
+
+	app, ok := apps[appID]
+	if !ok {
+		http.Error(w, "Invalid app_id", http.StatusUnauthorized)
+		return
+	}
+	hub := hubs[appID]
+
 	ticket := r.URL.Query().Get("ticket")
 	if ticket == "" {
 		http.Error(w, "Missing ticket", http.StatusUnauthorized)
 		return
 	}
 
-	userID, err := validateTicketWithLaravel(ticket)
+	userID, err := validateTicketWithLaravel(ticket, app)
 	if err != nil || userID == "" {
 		http.Error(w, "Invalid ticket", http.StatusUnauthorized)
 		return
@@ -78,7 +123,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	hub.Register(userID, conn)
 	defer hub.Unregister(userID, conn)
 
-	// Keep alive & Client Message pump (for subscribing to channels)
+	// Keep alive & Client Message pump
 	for {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
@@ -99,15 +144,15 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func validateTicketWithLaravel(ticket string) (string, error) {
+func validateTicketWithLaravel(ticket string, app *AppConfig) (string, error) {
 	reqBody, _ := json.Marshal(map[string]string{"ticket": ticket})
-	req, err := http.NewRequest("POST", laravelTicketURL, bytes.NewBuffer(reqBody))
+	req, err := http.NewRequest("POST", app.TicketURL, bytes.NewBuffer(reqBody))
 	if err != nil {
 		return "", err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+internalSecret)
+	req.Header.Set("Authorization", "Bearer "+app.Secret)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -150,7 +195,19 @@ func broadcastHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	authHeader := r.Header.Get("Authorization")
-	if authHeader != "Bearer "+internalSecret {
+	secret := strings.TrimPrefix(authHeader, "Bearer ")
+
+	var matchedApp *AppConfig
+	var matchedHub *Hub
+	for _, app := range apps {
+		if app.Secret == secret {
+			matchedApp = app
+			matchedHub = hubs[app.AppID]
+			break
+		}
+	}
+
+	if matchedApp == nil {
 		log.Printf("Unauthorized broadcast request from %s", r.RemoteAddr)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -172,13 +229,13 @@ func broadcastHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if payload.Channel != "" {
-		log.Printf("Broadcasting event '%s' to channel: %s", payload.Event, payload.Channel)
-		hub.BroadcastToChannel(payload.Channel, body)
+		log.Printf("[App: %s] Broadcasting event '%s' to channel: %s", matchedApp.AppID, payload.Event, payload.Channel)
+		matchedHub.BroadcastToChannel(payload.Channel, body)
 	} else if payload.UserID != "" {
-		log.Printf("Broadcasting event '%s' to user: %s", payload.Event, payload.UserID)
-		hub.BroadcastToUser(payload.UserID, body)
+		log.Printf("[App: %s] Broadcasting event '%s' to user: %s", matchedApp.AppID, payload.Event, payload.UserID)
+		matchedHub.BroadcastToUser(payload.UserID, body)
 	} else {
-		log.Printf("Failed broadcast: Missing user_id or channel. Body: %s", string(body))
+		log.Printf("[App: %s] Failed broadcast: Missing user_id or channel", matchedApp.AppID)
 		http.Error(w, "Missing user_id or channel", http.StatusBadRequest)
 		return
 	}
