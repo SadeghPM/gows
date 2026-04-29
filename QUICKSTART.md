@@ -51,7 +51,11 @@ Drop the provided code into your Laravel application and connect the two servers
 2. **Move Files**:
     - Copy `laravel-app/app/Services/GoWebSocketService.php` to your `app/Services/`.
     - Copy `laravel-app/app/Http/Controllers/WebSocketTicketController.php` to your `app/Http/Controllers/`.
-3. **Register Routes**: Add to your `routes/web.php` and `routes/api.php` as shown in the example code so clients can fetch tickets and Go can validate them.
+    - Copy `laravel-app/app/Providers/GoWebSocketServiceProvider.php` to your `app/Providers/`.
+
+3. **Register Service Provider**: Register the `GoWebSocketServiceProvider` to automatically load the required ticket routes.
+    - **Laravel 11**: Add `App\Providers\GoWebSocketServiceProvider::class` to `bootstrap/providers.php`.
+    - **Laravel 10-**: Add `App\Providers\GoWebSocketServiceProvider::class` to the `providers` array in `config/app.php`.
 
 4. **Send an Event**: Anywhere in your Laravel controllers or jobs:
     ```php
