@@ -9,9 +9,10 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/joho/godotenv"
+	"gopkg.in/yaml.v2"
 )
 
 var upgrader = websocket.Upgrader{
@@ -21,9 +22,18 @@ var upgrader = websocket.Upgrader{
 }
 
 type AppConfig struct {
-	AppID     string `json:"app_id"`
-	TicketURL string `json:"ticket_url"`
-	Secret    string `json:"secret"`
+	AppID     string `json:"app_id" yaml:"id"`
+	TicketURL string `json:"ticket_url" yaml:"ticket_url"`
+	Secret    string `json:"secret" yaml:"secret"`
+}
+
+type ServerConfig struct {
+	Port string `yaml:"port"`
+}
+
+type YAMLConfig struct {
+	Server ServerConfig `yaml:"server"`
+	Apps   []AppConfig  `yaml:"apps"`
 }
 
 var apps = make(map[string]*AppConfig)
@@ -31,29 +41,34 @@ var hubs = make(map[string]*Hub)
 var serverPort = "8080"
 
 func initConfig() {
-	_ = godotenv.Load()
-	if port := os.Getenv("PORT"); port != "" {
-		serverPort = port
-	}
-
-	// Try reading apps.json for multi-tenant setup
-	file, err := os.ReadFile("apps.json")
+	// Try reading config.yaml
+	file, err := os.ReadFile("config.yaml")
 	if err == nil {
-		var configApps []AppConfig
-		if err := json.Unmarshal(file, &configApps); err == nil {
-			for _, app := range configApps {
+		var config YAMLConfig
+		if err := yaml.Unmarshal(file, &config); err == nil {
+			// Load server config
+			if config.Server.Port != "" {
+				serverPort = config.Server.Port
+			}
+
+			// Load apps
+			for _, app := range config.Apps {
 				a := app // copy
 				apps[a.AppID] = &a
 				hubs[a.AppID] = NewHub()
 			}
-			log.Printf("Loaded %d apps from apps.json", len(apps))
+			log.Printf("Loaded %d apps from config.yaml (server port: %s)", len(apps), serverPort)
 			return
 		} else {
-			log.Printf("Failed to parse apps.json: %v. Falling back to env defaults.", err)
+			log.Printf("Failed to parse config.yaml: %v. Falling back to env defaults.", err)
 		}
 	}
 
-	// Fallback to single-tenant Env vars
+	// Fallback to environment variables
+	if port := os.Getenv("PORT"); port != "" {
+		serverPort = port
+	}
+
 	app := &AppConfig{
 		AppID:     os.Getenv("APP_ID"),
 		TicketURL: os.Getenv("LARAVEL_TICKET_URL"),
@@ -70,7 +85,7 @@ func initConfig() {
 	}
 	apps[app.AppID] = app
 	hubs[app.AppID] = NewHub()
-	log.Printf("Loaded single-tenant fallback (AppID: %s)", app.AppID)
+	log.Printf("Loaded single-tenant fallback from env vars (AppID: %s)", app.AppID)
 }
 
 func main() {
@@ -122,6 +137,33 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 
 	hub.Register(userID, conn)
 	defer hub.Unregister(userID, conn)
+
+	// Ping/Pong detection for inactive connections
+	const (
+		writeWait    = 10 * time.Second
+		pongWait     = 60 * time.Second
+		pingInterval = (pongWait * 9) / 10 // 54 seconds
+	)
+
+	conn.SetReadDeadline(time.Now().Add(pongWait))
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
+
+	// Start ping ticker
+	ticker := time.NewTicker(pingInterval)
+	defer ticker.Stop()
+
+	// Goroutine to send periodic pings
+	go func() {
+		for range ticker.C {
+			conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := conn.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
+				return
+			}
+		}
+	}()
 
 	// Keep alive & Client Message pump
 	for {
