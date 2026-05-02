@@ -1,8 +1,10 @@
+version: 2
 project_name: gows
 
 builds:
   - id: gows
-    main: ./go-server/main.go
+    main: ./main.go
+    dir: ./go-server
     binary: gows
     goos:
       - linux
@@ -15,7 +17,7 @@ builds:
       - -s -w -X main.Version={{.Version}}
 
 archives:
-  - format: tar.gz
+  - name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
         format: zip
