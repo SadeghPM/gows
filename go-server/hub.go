@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -98,6 +99,7 @@ func (h *Hub) BroadcastToUser(userID string, message []byte) {
 	if conns, ok := h.connections[userID]; ok {
 		log.Printf("Found %d connections for user %s", len(conns), userID)
 		for conn := range conns {
+			conn.SetWriteDeadline(time.Now().Add(writeWait))
 			err := conn.WriteMessage(websocket.TextMessage, message)
 			if err != nil {
 				log.Printf("Error writing to user %s: %v", userID, err)
@@ -118,6 +120,7 @@ func (h *Hub) BroadcastToChannel(channel string, message []byte) {
 	if conns, ok := h.channels[channel]; ok {
 		log.Printf("Found %d connections for channel %s", len(conns), channel)
 		for conn := range conns {
+			conn.SetWriteDeadline(time.Now().Add(writeWait))
 			err := conn.WriteMessage(websocket.TextMessage, message)
 			if err != nil {
 				log.Printf("Error writing to channel %s: %v", channel, err)

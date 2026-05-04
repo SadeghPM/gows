@@ -2,12 +2,14 @@ class GoWS {
     /**
      * @param {Object} config Options for initialization
      * @param {string} config.ticketUrl The URL on Laravel pointing to generation endpoint (e.g. /api/ws/ticket)
+     * @param {string} [config.appId] The application ID for multi-tenant WebSocket connections
      * @param {string} [config.token] Authorization token if required for your /api/ws/ticket HTTP request
      * @param {boolean} [config.autoReconnect=true] Automatically reconnect if connection dies
      * @param {number} [config.reconnectInterval=3000] Interval before retry in ms
      */
     constructor(config) {
         this.ticketUrl = config.ticketUrl;
+        this.appId = config.appId || null;
         this.token = config.token || null;
         this.csrfToken = config.csrfToken || null;
         this.withCredentials = config.withCredentials !== false; // Default to true to send session cookies
@@ -37,11 +39,18 @@ class GoWS {
             if (!ticketData.ticket || !ticketData.ws_url) {
                 throw new Error("Invalid ticket response from server");
             }
+
+            // Use app_id from constructor config or from ticket response
+            const appId = this.appId || ticketData.app_id;
+            if (!appId) {
+                throw new Error("app_id not provided in config or ticket response");
+            }
             
             console.log('[GoWS] Ticket acquired. Connecting immediately to ' + ticketData.ws_url);
             
-            // Assuming ws_url returned from laravel is e.g. "ws://localhost:8080/ws"
+            // Construct URL with both app_id and ticket parameters
             const urlWithParams = new URL(ticketData.ws_url);
+            urlWithParams.searchParams.append('app_id', appId);
             urlWithParams.searchParams.append('ticket', ticketData.ticket);
 
             this._establishWS(urlWithParams.toString());

@@ -29,6 +29,9 @@
             // Normally this is a relative string e.g. "/ws/generate-ticket" instead of a full host url
             ticketUrl: "/ws/generate-ticket", 
             
+            // Multi-tenant app ID (can also come from ticket response)
+            appId: "default",
+            
             // Pass the CSRF token required by Laravel's web middleware
             csrfToken: csrf,
             

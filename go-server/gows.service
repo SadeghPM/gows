@@ -4,21 +4,15 @@ After=network.target
 
 [Service]
 Type=simple
-# Ensure you create this user or change to an existing user (e.g., root or www-data)
-User=root
-Group=root
+User=gows
+Group=gows
 
-# Set working directory to load config.yaml properly
-WorkingDirectory=/etc/gows
+WorkingDirectory=/opt/gows
+ExecStart=/opt/gows/gows
 
-# Path to the executable
-ExecStart=/usr/local/bin/gows
-
-# Restart policy
 Restart=always
 RestartSec=5
 
-# Logging
 StandardOutput=syslog
 StandardError=syslog
 SyslogIdentifier=gows

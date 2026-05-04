@@ -40,6 +40,12 @@ var apps = make(map[string]*AppConfig)
 var hubs = make(map[string]*Hub)
 var serverPort = "8080"
 
+const (
+	writeWait    = 10 * time.Second
+	pongWait     = 60 * time.Second
+	pingInterval = (pongWait * 9) / 10 // 54 seconds
+)
+
 func initConfig() {
 	// Try reading config.yaml
 	file, err := os.ReadFile("config.yaml")
@@ -93,10 +99,26 @@ func main() {
 
 	http.HandleFunc("/ws", wsHandler)
 	http.HandleFunc("/api/internal/broadcast", broadcastHandler)
+	http.HandleFunc("/up", healthHandler)
 
 	port := ":" + serverPort
 	log.Printf("Go WebSocket server running on %s", port)
 	log.Fatal(http.ListenAndServe(port, nil))
+}
+
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if r.Method == http.MethodHead {
+		return
+	}
+
+	_, _ = w.Write([]byte(`{"status":"ok"}`))
 }
 
 type ClientMessage struct {
@@ -110,24 +132,34 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 		appID = "default"
 	}
 
+	log.Printf("[WS] Connection attempt - app_id: %s", appID)
+
 	app, ok := apps[appID]
 	if !ok {
+		log.Printf("[WS] App not found: %s (available: %v)", appID, getAppIDs())
 		http.Error(w, "Invalid app_id", http.StatusUnauthorized)
 		return
 	}
 	hub := hubs[appID]
 
+	log.Printf("[WS] App config - ticket_url: %s", app.TicketURL)
+
 	ticket := r.URL.Query().Get("ticket")
 	if ticket == "" {
+		log.Printf("[WS] Missing ticket")
 		http.Error(w, "Missing ticket", http.StatusUnauthorized)
 		return
 	}
 
+	log.Printf("[WS] Validating ticket: %s", ticket)
 	userID, err := validateTicketWithLaravel(ticket, app)
 	if err != nil || userID == "" {
+		log.Printf("[WS] Validation failed - err: %v, userID: %s", err, userID)
 		http.Error(w, "Invalid ticket", http.StatusUnauthorized)
 		return
 	}
+
+	log.Printf("[WS] Validation success - user_id: %s", userID)
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -137,13 +169,6 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 
 	hub.Register(userID, conn)
 	defer hub.Unregister(userID, conn)
-
-	// Ping/Pong detection for inactive connections
-	const (
-		writeWait    = 10 * time.Second
-		pongWait     = 60 * time.Second
-		pingInterval = (pongWait * 9) / 10 // 54 seconds
-	)
 
 	conn.SetReadDeadline(time.Now().Add(pongWait))
 	conn.SetPongHandler(func(string) error {
@@ -186,40 +211,62 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func getAppIDs() []string {
+	keys := make([]string, 0, len(apps))
+	for k := range apps {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
 func validateTicketWithLaravel(ticket string, app *AppConfig) (string, error) {
 	reqBody, _ := json.Marshal(map[string]string{"ticket": ticket})
 	req, err := http.NewRequest("POST", app.TicketURL, bytes.NewBuffer(reqBody))
 	if err != nil {
+		log.Printf("[VALIDATION] Request creation error: %v", err)
 		return "", err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+app.Secret)
 
+	log.Printf("[VALIDATION] Requesting: %s with ticket: %s", app.TicketURL, ticket)
+	log.Printf("[VALIDATION] Secret being used: %s", app.Secret)
+
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
+		log.Printf("[VALIDATION] Request error: %v", err)
 		return "", err
 	}
 	defer resp.Body.Close()
 
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	log.Printf("[VALIDATION] Response status: %d", resp.StatusCode)
+	log.Printf("[VALIDATION] Response body: %s", string(bodyBytes))
+
 	if resp.StatusCode != http.StatusOK {
-		return "", nil // Invalid ticket
+		log.Printf("[VALIDATION] Invalid ticket - status not OK")
+		return "", nil
 	}
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
 	var result map[string]interface{}
 	if err := json.Unmarshal(bodyBytes, &result); err != nil {
+		log.Printf("[VALIDATION] Failed to parse response: %v", err)
 		return "", err
 	}
 
 	if userID, ok := result["user_id"].(string); ok {
+		log.Printf("[VALIDATION] Got user_id (string): %s", userID)
 		return userID, nil
 	}
 	if userIDFloat, ok := result["user_id"].(float64); ok {
-		return strconv.FormatFloat(userIDFloat, 'f', -1, 64), nil
+		userID := strconv.FormatFloat(userIDFloat, 'f', -1, 64)
+		log.Printf("[VALIDATION] Got user_id (float): %s", userID)
+		return userID, nil
 	}
 
+	log.Printf("[VALIDATION] No user_id in response")
 	return "", nil
 }
 
