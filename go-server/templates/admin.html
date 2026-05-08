@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GoWS Admin</title>
+  <style>
+    :root { color-scheme: light dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { margin: 0; background: #f7f7f4; color: #202124; }
+    main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 48px; }
+    header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 24px; }
+    h1 { margin: 0 0 6px; font-size: clamp(28px, 5vw, 42px); line-height: 1.05; }
+    p { margin: 0; color: #5b5d61; }
+    .badge { display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 999px; background: #202124; color: #fff; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 18px 0 28px; }
+    .card { background: #fff; border: 1px solid #deded8; border-radius: 8px; padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+    .label { display: block; color: #6a6c70; font-size: 13px; margin-bottom: 8px; }
+    .value { font-size: 30px; font-weight: 700; line-height: 1; }
+    section { margin-top: 28px; }
+    h2 { margin: 0 0 12px; font-size: 18px; }
+    table { width: 100%; border-collapse: collapse; overflow: hidden; background: #fff; border: 1px solid #deded8; border-radius: 8px; }
+    th, td { text-align: left; padding: 13px 14px; border-bottom: 1px solid #ecece7; }
+    th { color: #5b5d61; font-size: 13px; font-weight: 600; background: #fbfbf8; }
+    tr:last-child td { border-bottom: 0; }
+    .warning { border-color: #d49b2a; background: #fff6df; color: #3d2c05; margin-bottom: 18px; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #171817; color: #f2f2ef; }
+      p, .label, th { color: #b8bab4; }
+      .card, table { background: #222320; border-color: #3a3c36; }
+      th { background: #292a26; }
+      th, td { border-bottom-color: #353732; }
+      .badge { background: #f2f2ef; color: #171817; }
+      .warning { background: #3a2d12; border-color: #7a5a18; color: #f6e4aa; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>GoWS Admin</h1>
+        <p>Started {{.StartedAt}} · uptime {{.Uptime}}</p>
+      </div>
+      <span class="badge">{{.Mode}}</span>
+    </header>
+
+    {{if not .IsAdminPasswordConfigured}}
+    <div class="card warning">Admin password is not configured. Set server.admin_password or GOWS_ADMIN_PASSWORD before exposing this server.</div>
+    {{end}}
+
+    <div class="grid">
+      <div class="card"><span class="label">Active connections</span><span class="value">{{.TotalConnections}}</span></div>
+      <div class="card"><span class="label">Active users</span><span class="value">{{.TotalUsers}}</span></div>
+      <div class="card"><span class="label">Active channels</span><span class="value">{{.TotalChannels}}</span></div>
+      <div class="card"><span class="label">Apps</span><span class="value">{{len .Apps}}</span></div>
+    </div>
+
+    <section>
+      <h2>WebSocket</h2>
+      <div class="grid">
+        <div class="card"><span class="label">Attempts</span><span class="value">{{.WSAttempts}}</span></div>
+        <div class="card"><span class="label">Accepted</span><span class="value">{{.WSAccepted}}</span></div>
+        <div class="card"><span class="label">Rejected</span><span class="value">{{.WSRejected}}</span></div>
+        <div class="card"><span class="label">Validation failures</span><span class="value">{{.ValidationFailures}}</span></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Broadcasts</h2>
+      <div class="grid">
+        <div class="card"><span class="label">Requests</span><span class="value">{{.BroadcastRequests}}</span></div>
+        <div class="card"><span class="label">Sent</span><span class="value">{{.BroadcastSent}}</span></div>
+        <div class="card"><span class="label">Failed</span><span class="value">{{.BroadcastFailed}}</span></div>
+        <div class="card"><span class="label">Unauthorized</span><span class="value">{{.BroadcastUnauthorized}}</span></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Apps</h2>
+      <table>
+        <thead><tr><th>App ID</th><th>Users</th><th>Connections</th><th>Channels</th></tr></thead>
+        <tbody>
+          {{range .Apps}}
+          <tr><td>{{.AppID}}</td><td>{{.Users}}</td><td>{{.Connections}}</td><td>{{.Channels}}</td></tr>
+          {{else}}
+          <tr><td colspan="4">No apps configured.</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,5 +1,8 @@
 server:
   port: "8080"
+  mode: "production" # production or debug
+  admin_username: "admin"
+  admin_password: "change-this-password"
 
 apps:
   - id: "default"

@@ -12,7 +12,7 @@ PORT ?= 8080
 .PHONY: build
 build:
 	@echo "Building $(APP_NAME)..."
-	go build -o $(APP_NAME) main.go hub.go
+	go build -o $(APP_NAME) .
 	@echo "Build complete."
 
 # Run the project locally
@@ -25,7 +25,7 @@ run: build
 .PHONY: build-linux
 build-linux:
 	@echo "Building $(APP_NAME) for Linux architecture..."
-	GOOS=linux GOARCH=amd64 go build -o $(APP_NAME)-linux-amd64 main.go hub.go
+	GOOS=linux GOARCH=amd64 go build -o $(APP_NAME)-linux-amd64 .
 	@echo "Linux build complete."
 
 # Clean compiled binaries
