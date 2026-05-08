@@ -12,7 +12,7 @@ PORT ?= 8080
 .PHONY: build
 build:
 	@echo "Building $(APP_NAME)..."
-	go build -o $(APP_NAME) .
+	go build -o $(APP_NAME) ./cmd/gows
 	@echo "Build complete."
 
 # Run the project locally
@@ -25,7 +25,7 @@ run: build
 .PHONY: build-linux
 build-linux:
 	@echo "Building $(APP_NAME) for Linux architecture..."
-	GOOS=linux GOARCH=amd64 go build -o $(APP_NAME)-linux-amd64 .
+	GOOS=linux GOARCH=amd64 go build -o $(APP_NAME)-linux-amd64 ./cmd/gows
 	@echo "Linux build complete."
 
 # Clean compiled binaries
@@ -42,6 +42,12 @@ deps:
 	go mod download
 	go mod tidy
 	@echo "Dependencies installed."
+
+# Run tests
+.PHONY: test
+test:
+	@echo "Running tests..."
+	go test ./...
 
 # Run the installer script for Ubuntu/systemd
 .PHONY: install-ubuntu

@@ -14,7 +14,7 @@ echo "Installing GoWS Server..."
 
 # 1. Build the server
 echo "Building the Go binary..."
-go build -o gows main.go hub.go
+go build -o gows ./cmd/gows
 
 # 2. Move binary to /usr/local/bin
 echo "Moving binary to /usr/local/bin/gows..."
@@ -33,6 +33,7 @@ server:
 
 apps:
   - id: "default"
+    name: "Default"
     ticket_url: "http://localhost:8000/api/internal/ws/validate-ticket"
     secret: "super-secret-internal-key"
 EOF

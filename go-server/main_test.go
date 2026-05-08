@@ -8,8 +8,11 @@ import (
 )
 
 func resetTestState() {
+	appsMu.Lock()
 	apps = make(map[string]*AppConfig)
 	hubs = make(map[string]*Hub)
+	appStats = make(map[string]*AppStats)
+	appsMu.Unlock()
 	serverPort = "8080"
 	serverMode = "production"
 	adminUsername = "admin"

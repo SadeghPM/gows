@@ -35,6 +35,8 @@ func main() {
 	http.HandleFunc("/api/internal/broadcast", broadcastHandler)
 	http.HandleFunc("/up", healthHandler)
 	http.HandleFunc("/admin", adminDashboardHandler)
+	http.HandleFunc("/admin/apps/new", adminAppNewHandler)
+	http.HandleFunc("/admin/apps/", adminAppHandler)
 
 	port := ":" + serverPort
 	log.Printf("Go WebSocket server running on %s", port)
@@ -70,15 +72,14 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 
 	debugLog("[WS] Connection attempt - app_id: %s", appID)
 
-	app, ok := apps[appID]
-	if !ok {
+	app, hub, ok := getAppByID(appID)
+	if !ok || app == nil || hub == nil {
 		stats.wsRejected.Add(1)
 		infoLog("[WS] App not found: %s", appID)
 		debugLog("[WS] Available apps: %v", getAppIDs())
 		http.Error(w, "Invalid app_id", http.StatusUnauthorized)
 		return
 	}
-	hub := hubs[appID]
 
 	debugLog("[WS] App config - ticket_url: %s", app.TicketURL)
 
@@ -151,14 +152,6 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-}
-
-func getAppIDs() []string {
-	keys := make([]string, 0, len(apps))
-	for k := range apps {
-		keys = append(keys, k)
-	}
-	return keys
 }
 
 func validateTicketWithLaravel(ticket string, app *AppConfig) (string, error) {
@@ -236,17 +229,8 @@ func broadcastHandler(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
 	secret := strings.TrimPrefix(authHeader, "Bearer ")
 
-	var matchedApp *AppConfig
-	var matchedHub *Hub
-	for _, app := range apps {
-		if app.Secret == secret {
-			matchedApp = app
-			matchedHub = hubs[app.AppID]
-			break
-		}
-	}
-
-	if matchedApp == nil {
+	matchedApp, matchedHub, matchedStats := findAppBySecret(secret)
+	if matchedApp == nil || matchedHub == nil {
 		stats.broadcastUnauthorized.Add(1)
 		stats.broadcastFailed.Add(1)
 		infoLog("Unauthorized broadcast request from %s", r.RemoteAddr)
@@ -254,9 +238,17 @@ func broadcastHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if matchedStats == nil {
+		appsMu.Lock()
+		matchedStats = ensureAppStatsLocked(matchedApp.AppID)
+		appsMu.Unlock()
+	}
+	matchedStats.broadcastRequests.Add(1)
+
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		stats.broadcastFailed.Add(1)
+		matchedStats.broadcastFailed.Add(1)
 		infoLog("Could not read broadcast body: %v", err)
 		http.Error(w, "Could not read body", http.StatusBadRequest)
 		return
@@ -266,6 +258,7 @@ func broadcastHandler(w http.ResponseWriter, r *http.Request) {
 	var payload BroadcastPayload
 	if err := json.Unmarshal(body, &payload); err != nil {
 		stats.broadcastFailed.Add(1)
+		matchedStats.broadcastFailed.Add(1)
 		infoLog("Invalid broadcast JSON: %v", err)
 		debugLog("Invalid broadcast body: %s", string(body))
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
@@ -280,12 +273,14 @@ func broadcastHandler(w http.ResponseWriter, r *http.Request) {
 		matchedHub.BroadcastToUser(payload.UserID, body)
 	} else {
 		stats.broadcastFailed.Add(1)
+		matchedStats.broadcastFailed.Add(1)
 		infoLog("[App: %s] Failed broadcast: Missing user_id or channel", matchedApp.AppID)
 		http.Error(w, "Missing user_id or channel", http.StatusBadRequest)
 		return
 	}
 
 	stats.broadcastSent.Add(1)
+	matchedStats.broadcastSent.Add(1)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"sent"}`))
 }

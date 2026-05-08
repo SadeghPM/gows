@@ -1,4 +1,4 @@
-package main
+package admin
 
 import (
 	"crypto/subtle"
@@ -6,9 +6,12 @@ import (
 	"html/template"
 	"log"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
+
+	"github.com/sadegh/gows/internal/apps"
+	"github.com/sadegh/gows/internal/config"
+	"github.com/sadegh/gows/internal/stats"
 )
 
 //go:embed templates/*.html
@@ -47,20 +50,20 @@ type DashboardApp struct {
 	Users       int
 	Connections int
 	Channels    int
-	Broadcasts  AppStatsSnapshot
+	Broadcasts  apps.AppStatsSnapshot
 }
 
 type AppFormData struct {
 	Mode                      string
 	Title                     string
 	IsEdit                    bool
-	App                       AppConfig
+	App                       config.AppConfig
 	Message                   string
 	Error                     string
 	IsAdminPasswordConfigured bool
 }
 
-func adminDashboardHandler(w http.ResponseWriter, r *http.Request) {
+func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -80,21 +83,21 @@ func adminDashboardHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func isAdminAuthorized(r *http.Request) bool {
-	if adminPassword == "" {
+	if config.AdminPassword() == "" {
 		return false
 	}
 	username, password, ok := r.BasicAuth()
 	if !ok {
 		return false
 	}
-	userOK := subtle.ConstantTimeCompare([]byte(username), []byte(adminUsername)) == 1
-	passOK := subtle.ConstantTimeCompare([]byte(password), []byte(adminPassword)) == 1
+	userOK := subtle.ConstantTimeCompare([]byte(username), []byte(config.AdminUsername())) == 1
+	passOK := subtle.ConstantTimeCompare([]byte(password), []byte(config.AdminPassword())) == 1
 	return userOK && passOK
 }
 
 func requireAdminAuth(w http.ResponseWriter, r *http.Request) bool {
 	if !isAdminAuthorized(r) {
-		stats.adminUnauthorizedViews.Add(1)
+		stats.Server.AdminUnauthorizedViews.Add(1)
 		w.Header().Set("WWW-Authenticate", `Basic realm="GoWS Admin"`)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return false
@@ -102,7 +105,7 @@ func requireAdminAuth(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-func adminAppNewHandler(w http.ResponseWriter, r *http.Request) {
+func AppNewHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -112,10 +115,10 @@ func adminAppNewHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := AppFormData{
-		Mode:                      serverMode,
+		Mode:                      config.Mode(),
 		Title:                     "Add app",
 		IsEdit:                    false,
-		IsAdminPasswordConfigured: adminPassword != "",
+		IsAdminPasswordConfigured: config.AdminPasswordConfigured(),
 	}
 
 	if r.Method == http.MethodGet {
@@ -129,29 +132,29 @@ func adminAppNewHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	secret, err := generateAppSecret()
+	secret, err := apps.GenerateSecret()
 	if err != nil {
 		data.Error = "Could not generate secret."
 		renderAppForm(w, data)
 		return
 	}
 
-	app := AppConfig{
+	app := config.AppConfig{
 		Name:      r.FormValue("name"),
 		AppID:     r.FormValue("app_id"),
 		TicketURL: r.FormValue("ticket_url"),
 		Secret:    secret,
 	}
 
-	if err := addAppConfig(app); err != nil {
+	if err := apps.Add(app); err != nil {
 		data.Error = err.Error()
 		data.App = app
 		renderAppForm(w, data)
 		return
 	}
 
-	if err := persistConfig(); err != nil {
-		_ = deleteAppConfig(app.AppID)
+	if err := config.Persist(apps.ListConfigs()); err != nil {
+		_ = apps.Delete(app.AppID)
 		data.Error = "Failed to save config: " + err.Error()
 		data.App = app
 		renderAppForm(w, data)
@@ -161,7 +164,7 @@ func adminAppNewHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin/apps/"+template.URLQueryEscaper(app.AppID)+"/edit?created=1", http.StatusSeeOther)
 }
 
-func adminAppHandler(w http.ResponseWriter, r *http.Request) {
+func AppHandler(w http.ResponseWriter, r *http.Request) {
 	if !requireAdminAuth(w, r) {
 		return
 	}
@@ -180,7 +183,7 @@ func adminAppHandler(w http.ResponseWriter, r *http.Request) {
 
 	appID := parts[0]
 	action := parts[1]
-	if !isValidAppID(appID) {
+	if !apps.IsValidAppID(appID) {
 		http.Error(w, "Invalid app id", http.StatusBadRequest)
 		return
 	}
@@ -201,18 +204,18 @@ func adminAppEditHandler(w http.ResponseWriter, r *http.Request, appID string) {
 		return
 	}
 
-	app, _, ok := getAppByID(appID)
+	app, _, ok := apps.GetByID(appID)
 	if !ok || app == nil {
 		http.NotFound(w, r)
 		return
 	}
 
 	data := AppFormData{
-		Mode:                      serverMode,
+		Mode:                      config.Mode(),
 		Title:                     "Edit app",
 		IsEdit:                    true,
 		App:                       *app,
-		IsAdminPasswordConfigured: adminPassword != "",
+		IsAdminPasswordConfigured: config.AdminPasswordConfigured(),
 	}
 
 	if r.Method == http.MethodGet {
@@ -236,7 +239,7 @@ func adminAppEditHandler(w http.ResponseWriter, r *http.Request, appID string) {
 	ticketURL := r.FormValue("ticket_url")
 	previous := data.App
 
-	if err := updateAppConfig(appID, name, ticketURL); err != nil {
+	if err := apps.Update(appID, name, ticketURL); err != nil {
 		data.Error = err.Error()
 		data.App.Name = name
 		data.App.TicketURL = ticketURL
@@ -244,8 +247,8 @@ func adminAppEditHandler(w http.ResponseWriter, r *http.Request, appID string) {
 		return
 	}
 
-	if err := persistConfig(); err != nil {
-		_ = updateAppConfig(previous.AppID, previous.Name, previous.TicketURL)
+	if err := config.Persist(apps.ListConfigs()); err != nil {
+		_ = apps.Update(previous.AppID, previous.Name, previous.TicketURL)
 		data.Error = "Failed to save config: " + err.Error()
 		renderAppForm(w, data)
 		return
@@ -260,21 +263,21 @@ func adminAppDeleteHandler(w http.ResponseWriter, r *http.Request, appID string)
 		return
 	}
 
-	app, _, ok := getAppByID(appID)
+	app, _, ok := apps.GetByID(appID)
 	if !ok || app == nil {
 		http.NotFound(w, r)
 		return
 	}
 	appCopy := *app
 
-	if err := deleteAppConfig(appID); err != nil {
+	if err := apps.Delete(appID); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if err := persistConfig(); err != nil {
-		_ = addAppConfig(appCopy)
-		_ = persistConfig()
+	if err := config.Persist(apps.ListConfigs()); err != nil {
+		_ = apps.Add(appCopy)
+		_ = config.Persist(apps.ListConfigs())
 		http.Error(w, "Failed to save config: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -291,58 +294,39 @@ func renderAppForm(w http.ResponseWriter, data AppFormData) {
 
 func dashboardSnapshot() DashboardData {
 	data := DashboardData{
-		Mode:                      serverMode,
-		StartedAt:                 stats.startedAt.Format(time.RFC3339),
-		Uptime:                    time.Since(stats.startedAt).Round(time.Second).String(),
-		WSAttempts:                stats.wsAttempts.Load(),
-		WSAccepted:                stats.wsAccepted.Load(),
-		WSRejected:                stats.wsRejected.Load(),
-		BroadcastRequests:         stats.broadcastRequests.Load(),
-		BroadcastUnauthorized:     stats.broadcastUnauthorized.Load(),
-		BroadcastSent:             stats.broadcastSent.Load(),
-		BroadcastFailed:           stats.broadcastFailed.Load(),
-		ValidationRequests:        stats.validationRequests.Load(),
-		ValidationFailures:        stats.validationFailures.Load(),
-		AdminUnauthorizedViews:    stats.adminUnauthorizedViews.Load(),
-		IsAdminPasswordConfigured: adminPassword != "",
+		Mode:                      config.Mode(),
+		StartedAt:                 stats.Server.StartedAt.Format(time.RFC3339),
+		Uptime:                    time.Since(stats.Server.StartedAt).Round(time.Second).String(),
+		WSAttempts:                stats.Server.WSAttempts.Load(),
+		WSAccepted:                stats.Server.WSAccepted.Load(),
+		WSRejected:                stats.Server.WSRejected.Load(),
+		BroadcastRequests:         stats.Server.BroadcastRequests.Load(),
+		BroadcastUnauthorized:     stats.Server.BroadcastUnauthorized.Load(),
+		BroadcastSent:             stats.Server.BroadcastSent.Load(),
+		BroadcastFailed:           stats.Server.BroadcastFailed.Load(),
+		ValidationRequests:        stats.Server.ValidationRequests.Load(),
+		ValidationFailures:        stats.Server.ValidationFailures.Load(),
+		AdminUnauthorizedViews:    stats.Server.AdminUnauthorizedViews.Load(),
+		IsAdminPasswordConfigured: config.AdminPasswordConfigured(),
 	}
 
-	appsMu.RLock()
-	for appID, app := range apps {
-		hub := hubs[appID]
-		if hub == nil {
-			continue
-		}
-		snapshot := hub.Snapshot()
-		statsSnapshot := AppStatsSnapshot{}
-		if stats := appStats[appID]; stats != nil {
-			statsSnapshot = AppStatsSnapshot{
-				BroadcastRequests: stats.broadcastRequests.Load(),
-				BroadcastSent:     stats.broadcastSent.Load(),
-				BroadcastFailed:   stats.broadcastFailed.Load(),
-			}
-		}
+	for _, snapshot := range apps.SnapshotAll() {
 		data.Apps = append(data.Apps, DashboardApp{
-			Name:        app.Name,
-			AppID:       appID,
-			TicketURL:   app.TicketURL,
+			Name:        snapshot.App.Name,
+			AppID:       snapshot.App.AppID,
+			TicketURL:   snapshot.App.TicketURL,
 			Users:       snapshot.Users,
 			Connections: snapshot.Connections,
 			Channels:    snapshot.Channels,
-			Broadcasts:  statsSnapshot,
+			Broadcasts:  snapshot.Broadcasts,
 		})
 		data.TotalUsers += snapshot.Users
 		data.TotalConnections += snapshot.Connections
 		data.TotalChannels += snapshot.Channels
-		data.TotalBroadcastRequests += statsSnapshot.BroadcastRequests
-		data.TotalBroadcastSent += statsSnapshot.BroadcastSent
-		data.TotalBroadcastFailed += statsSnapshot.BroadcastFailed
+		data.TotalBroadcastRequests += snapshot.Broadcasts.BroadcastRequests
+		data.TotalBroadcastSent += snapshot.Broadcasts.BroadcastSent
+		data.TotalBroadcastFailed += snapshot.Broadcasts.BroadcastFailed
 	}
-	appsMu.RUnlock()
-
-	sort.Slice(data.Apps, func(i, j int) bool {
-		return strings.ToLower(data.Apps[i].AppID) < strings.ToLower(data.Apps[j].AppID)
-	})
 
 	return data
 }

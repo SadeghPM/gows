@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} · GoWS Admin</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: "Space Grotesk", "Trebuchet MS", "Segoe UI", sans-serif;
+      --ink: #101216;
+      --muted: #5d626b;
+      --bg: #f3f0e8;
+      --paper: #ffffff;
+      --border: #ded9cf;
+      --accent: #df6c2a;
+      --accent-2: #1f6feb;
+      --accent-ink: #1b0f06;
+      --shadow: rgba(16, 18, 22, 0.12);
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at top left, #f9f3e2 0%, #f3efe5 35%, #e7e4da 100%);
+      color: var(--ink);
+    }
+    main {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 36px 20px 60px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(30px, 5vw, 46px);
+      letter-spacing: -0.02em;
+    }
+    p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      height: 30px;
+      padding: 0 14px;
+      border-radius: 999px;
+      background: #101216;
+      color: #f7f3eb;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px;
+      box-shadow: 0 12px 24px -18px var(--shadow);
+    }
+    .warning {
+      border-color: #d99a26;
+      background: #fff5de;
+      color: #3d2c05;
+      margin-bottom: 16px;
+    }
+    .message {
+      border-color: #1f6feb;
+      background: #e9f1ff;
+      color: #0d2a4d;
+      margin-bottom: 16px;
+    }
+    .error {
+      border-color: #df2a2a;
+      background: #ffe9e9;
+      color: #5a1616;
+      margin-bottom: 16px;
+    }
+    form {
+      display: grid;
+      gap: 16px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    input {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      font-size: 16px;
+      font-family: inherit;
+    }
+    .hint {
+      margin-top: 6px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .row {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+    }
+    button {
+      border: none;
+      border-radius: 999px;
+      padding: 12px 20px;
+      font-weight: 600;
+      font-size: 15px;
+      cursor: pointer;
+      color: #fffaf0;
+      background: linear-gradient(135deg, #df6c2a, #f09032);
+      box-shadow: 0 10px 18px -12px rgba(223, 108, 42, 0.55);
+    }
+    .ghost {
+      background: transparent;
+      color: var(--ink);
+      border: 1px solid var(--border);
+      box-shadow: none;
+    }
+    .link {
+      color: var(--accent-2);
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .secret {
+      font-family: "IBM Plex Mono", "Courier New", monospace;
+      font-size: 14px;
+      word-break: break-all;
+      background: #f1efe7;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px dashed var(--border);
+    }
+    .danger-zone {
+      border: 1px dashed #e3a0a0;
+      padding: 14px;
+      border-radius: 12px;
+      background: #fff6f6;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --ink: #f5f3ed;
+        --muted: #b9b5ab;
+        --bg: #181715;
+        --paper: #23211d;
+        --border: #3a352c;
+        --accent: #f09032;
+        --accent-2: #5aa0ff;
+        --accent-ink: #201409;
+        --shadow: rgba(0, 0, 0, 0.5);
+      }
+      body {
+        background: radial-gradient(circle at top left, #302a20 0%, #1a1916 45%, #141310 100%);
+      }
+      input {
+        background: #1b1915;
+        color: var(--ink);
+      }
+      .warning {
+        background: #3a2d12;
+        border-color: #7a5a18;
+        color: #f6e4aa;
+      }
+      .message {
+        background: #182a44;
+        border-color: #274b7a;
+        color: #cde3ff;
+      }
+      .error {
+        background: #3b1919;
+        border-color: #8c3535;
+        color: #f0bcbc;
+      }
+      .secret {
+        background: #1b1a16;
+      }
+      .danger-zone {
+        background: #2b1a1a;
+        border-color: #7a3b3b;
+      }
+      .ghost {
+        color: var(--ink);
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>{{.Title}}</h1>
+        <p>Define your app ID and the ticket validation URL used by Laravel.</p>
+      </div>
+      <span class="badge">{{.Mode}}</span>
+    </header>
+
+    {{if not .IsAdminPasswordConfigured}}
+    <div class="card warning">Admin password is not configured. Set server.admin_password or GOWS_ADMIN_PASSWORD before exposing this server.</div>
+    {{end}}
+
+    {{if .Message}}
+    <div class="card message">{{.Message}}</div>
+    {{end}}
+
+    {{if .Error}}
+    <div class="card error">{{.Error}}</div>
+    {{end}}
+
+    <div class="card">
+      <form method="post">
+        <div class="row">
+          <div>
+            <label for="name">App name</label>
+            <input id="name" name="name" type="text" value="{{.App.Name}}" placeholder="Acme, Inc" required>
+          </div>
+          <div>
+            <label for="app_id">App ID</label>
+            <input id="app_id" name="app_id" type="text" value="{{.App.AppID}}" {{if .IsEdit}}readonly{{end}} placeholder="acme-prod" required>
+            <div class="hint">Letters, numbers, dash, underscore, dot.</div>
+          </div>
+        </div>
+
+        <div>
+          <label for="ticket_url">Ticket validation URL</label>
+          <input id="ticket_url" name="ticket_url" type="url" value="{{.App.TicketURL}}" placeholder="https://app.example.com/api/internal/ws/validate-ticket" required>
+          <div class="hint">Must be reachable by the Go server. For local dev, use http://host.docker.internal:8000/...</div>
+        </div>
+
+        {{if .IsEdit}}
+        <div>
+          <label>App secret</label>
+          <div class="secret">{{.App.Secret}}</div>
+          <div class="hint">Store this in Laravel as WS_INTERNAL_SECRET for this app.</div>
+        </div>
+        {{end}}
+
+        <div class="actions">
+          <button type="submit">{{if .IsEdit}}Save changes{{else}}Create app{{end}}</button>
+          <a class="link" href="/admin">Back to dashboard</a>
+          {{if .IsEdit}}
+          <a class="link" href="/admin/apps/{{.App.AppID}}/edit">Refresh</a>
+          {{end}}
+        </div>
+      </form>
+    </div>
+
+    {{if .IsEdit}}
+    <div class="card danger-zone" style="margin-top:16px;">
+      <form method="post" action="/admin/apps/{{.App.AppID}}/delete" onsubmit="return confirm('Delete this app? This disconnects all active users.');">
+        <div class="actions">
+          <button class="ghost" type="submit">Delete app</button>
+          <span class="hint">This removes the app from config.yaml and closes all connections.</span>
+        </div>
+      </form>
+    </div>
+    {{end}}
+  </main>
+</body>
+</html>

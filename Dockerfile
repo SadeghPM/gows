@@ -11,7 +11,7 @@ RUN go mod download
 COPY go-server/ ./
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -o gows main.go hub.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o gows ./cmd/gows
 
 # Run stage
 FROM alpine:latest

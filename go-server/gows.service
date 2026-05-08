@@ -9,6 +9,7 @@ Group=gows
 
 WorkingDirectory=/opt/gows
 ExecStart=/opt/gows/gows
+Environment=GOWS_CONFIG_PATH=/etc/gows/config.yaml
 
 Restart=always
 RestartSec=5

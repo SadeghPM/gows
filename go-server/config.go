@@ -10,6 +10,7 @@ import (
 )
 
 type AppConfig struct {
+	Name      string `json:"name" yaml:"name"`
 	AppID     string `json:"app_id" yaml:"id"`
 	TicketURL string `json:"ticket_url" yaml:"ticket_url"`
 	Secret    string `json:"secret" yaml:"secret"`
@@ -34,15 +35,18 @@ var adminPassword string
 
 func initConfig() {
 	stats.startedAt = time.Now()
+	if envPath := strings.TrimSpace(os.Getenv("GOWS_CONFIG_PATH")); envPath != "" {
+		configPath = envPath
+	}
 
-	file, err := os.ReadFile("config.yaml")
+	file, err := os.ReadFile(configPath)
 	if err == nil {
 		var config YAMLConfig
 		if err := yaml.Unmarshal(file, &config); err == nil {
 			loadYAMLConfig(config)
 			return
 		}
-		log.Printf("Failed to parse config.yaml: %v. Falling back to env defaults.", err)
+		log.Printf("Failed to parse %s: %v. Falling back to env defaults.", configPath, err)
 	}
 
 	loadEnvConfig()
@@ -54,11 +58,17 @@ func loadYAMLConfig(config YAMLConfig) {
 	}
 	applyServerSettings(config.Server)
 
+	appsMu.Lock()
 	for _, app := range config.Apps {
 		a := app
+		if strings.TrimSpace(a.Name) == "" {
+			a.Name = a.AppID
+		}
 		apps[a.AppID] = &a
 		hubs[a.AppID] = NewHub()
+		ensureAppStatsLocked(a.AppID)
 	}
+	appsMu.Unlock()
 	infoLog("Loaded %d apps from config.yaml (server port: %s, mode: %s)", len(apps), serverPort, serverMode)
 }
 
@@ -73,6 +83,7 @@ func loadEnvConfig() {
 	})
 
 	app := &AppConfig{
+		Name:      "Default",
 		AppID:     os.Getenv("APP_ID"),
 		TicketURL: os.Getenv("LARAVEL_TICKET_URL"),
 		Secret:    os.Getenv("INTERNAL_SECRET"),
@@ -80,14 +91,20 @@ func loadEnvConfig() {
 	if app.AppID == "" {
 		app.AppID = "default"
 	}
+	if app.Name == "" {
+		app.Name = app.AppID
+	}
 	if app.TicketURL == "" {
 		app.TicketURL = "http://localhost:8000/api/internal/ws/validate-ticket"
 	}
 	if app.Secret == "" {
 		app.Secret = "super-secret-internal-key"
 	}
+	appsMu.Lock()
 	apps[app.AppID] = app
 	hubs[app.AppID] = NewHub()
+	ensureAppStatsLocked(app.AppID)
+	appsMu.Unlock()
 	infoLog("Loaded single-tenant fallback from env vars (AppID: %s, mode: %s)", app.AppID, serverMode)
 }
 

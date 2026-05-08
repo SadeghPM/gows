@@ -1,4 +1,4 @@
-package main
+package apps
 
 import (
 	"log"
@@ -6,7 +6,10 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/sadegh/gows/internal/logging"
 )
+
+const writeWait = 10 * time.Second
 
 type Hub struct {
 	mu sync.RWMutex
@@ -38,7 +41,7 @@ func (h *Hub) Register(userID string, conn *websocket.Conn) {
 		h.connections[userID] = make(map[*websocket.Conn]bool)
 	}
 	h.connections[userID][conn] = true
-	debugLog("User %s connected.", userID)
+	logging.Debug("User %s connected.", userID)
 }
 
 // Unregister removes a connection from the user list and all subscribed channels
@@ -64,7 +67,7 @@ func (h *Hub) Unregister(userID string, conn *websocket.Conn) {
 			if len(conns) == 0 {
 				delete(h.channels, channelName)
 			}
-			debugLog("Connection unsubscribed from channel: %s", channelName)
+			logging.Debug("Connection unsubscribed from channel: %s", channelName)
 		}
 	}
 }
@@ -78,7 +81,7 @@ func (h *Hub) Subscribe(conn *websocket.Conn, channel string) {
 		h.channels[channel] = make(map[*websocket.Conn]bool)
 	}
 	h.channels[channel][conn] = true
-	debugLog("Connection subscribed to channel: %s", channel)
+	logging.Debug("Connection subscribed to channel: %s", channel)
 }
 
 // Unsubscribe removes a connection from a specific channel
@@ -92,7 +95,7 @@ func (h *Hub) Unsubscribe(conn *websocket.Conn, channel string) {
 			if len(conns) == 0 {
 				delete(h.channels, channel)
 			}
-			debugLog("Connection unsubscribed from channel: %s", channel)
+			logging.Debug("Connection unsubscribed from channel: %s", channel)
 		}
 	}
 }
@@ -103,18 +106,18 @@ func (h *Hub) BroadcastToUser(userID string, message []byte) {
 	defer h.mu.RUnlock()
 
 	if conns, ok := h.connections[userID]; ok {
-		debugLog("Found %d connections for user %s", len(conns), userID)
+		logging.Debug("Found %d connections for user %s", len(conns), userID)
 		for conn := range conns {
 			conn.SetWriteDeadline(time.Now().Add(writeWait))
 			err := conn.WriteMessage(websocket.TextMessage, message)
 			if err != nil {
 				log.Printf("Error writing to user %s: %v", userID, err)
 			} else {
-				debugLog("Successfully sent message to user %s", userID)
+				logging.Debug("Successfully sent message to user %s", userID)
 			}
 		}
 	} else {
-		debugLog("No active connections found for user: %s", userID)
+		logging.Debug("No active connections found for user: %s", userID)
 	}
 }
 
@@ -124,18 +127,18 @@ func (h *Hub) BroadcastToChannel(channel string, message []byte) {
 	defer h.mu.RUnlock()
 
 	if conns, ok := h.channels[channel]; ok {
-		debugLog("Found %d connections for channel %s", len(conns), channel)
+		logging.Debug("Found %d connections for channel %s", len(conns), channel)
 		for conn := range conns {
 			conn.SetWriteDeadline(time.Now().Add(writeWait))
 			err := conn.WriteMessage(websocket.TextMessage, message)
 			if err != nil {
 				log.Printf("Error writing to channel %s: %v", channel, err)
 			} else {
-				debugLog("Successfully sent message to channel %s", channel)
+				logging.Debug("Successfully sent message to channel %s", channel)
 			}
 		}
 	} else {
-		debugLog("No active connections found for channel: %s", channel)
+		logging.Debug("No active connections found for channel: %s", channel)
 	}
 }
 
