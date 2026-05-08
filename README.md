@@ -27,6 +27,9 @@ Create a `config.yaml` file in the `go-server/` directory:
 ```yaml
 server:
   port: "8080"
+  mode: "production" # production or debug
+  admin_username: "admin"
+  admin_password: "change-this-password"
 
 apps:
   - id: "default"
@@ -40,6 +43,10 @@ cd go-server
 make deps
 make run
 ```
+
+`production` mode keeps logs concise and avoids dumping sensitive ticket/secret details. `debug` mode enables verbose connection, validation, subscription, and delivery logs for troubleshooting.
+
+The Go server also exposes a minimal admin dashboard at `/admin`. It is protected with HTTP Basic Auth using `server.admin_username` and `server.admin_password`, or the fallback environment variables `GOWS_ADMIN_USERNAME` and `GOWS_ADMIN_PASSWORD`.
 
 > **Deployment Note:** If deploying to a production Linux server, run `make build-linux` to generate a compiled binary, or use `make install-ubuntu` to automatically install it as a systemd background service.
 
