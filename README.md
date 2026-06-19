@@ -114,9 +114,24 @@ GoWebSocketService::broadcastToChannel(
 );
 ```
 
+
+### Alternative: Standard Laravel Broadcaster
+
+If you prefer to use Laravel's standard event broadcasting (`ShouldBroadcast`, `broadcast(new MyEvent())`) instead of manually calling `GoWebSocketService`, you can use the included standard Laravel driver.
+
+1. **Copy the Driver Files**: Copy the contents of the `laravel-driver/` directory into your Laravel application's structure.
+2. **Register the Service Provider**: Add `GoWSBroadcastServiceProvider` to your bootstrap file or `config/app.php`.
+3. **Update `.env`**: Set your broadcast driver:
+   ```env
+   BROADCAST_CONNECTION=gows
+   ```
+
+Now you can broadcast native Laravel events. The driver will automatically map private user channels (`private-App.Models.User.1`) to the GoWS User Targeted broadcasts, and all other channels to GoWS Public Channels. You do not need to change the `gows.js` frontend; it will continue to receive these events just as before.
+
 ---
 
 ## Client Side Usage
+
 
 Drop the `gows.js` script into your frontend layout. The client library handles the heavy lifting, session cookie transmission, and JSON parsing.
 
